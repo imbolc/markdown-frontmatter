@@ -34,16 +34,29 @@ pub enum Error {
 
     #[cfg(feature = "yaml")]
     /// Invalid YAML
-    #[error("invalid YAML: {1}")]
+    #[error("invalid YAML syntax: {1}")]
     InvalidYaml(#[source] serde_yml::Error, String),
     #[cfg(feature = "json")]
     /// Invalid JSON
-    #[error("invalid YAML: {1}")]
+    #[error("invalid JSON syntax: {1}")]
     InvalidJson(#[source] serde_json::Error, String),
     #[cfg(feature = "toml")]
     /// Invalid TOML
-    #[error("invalid TOML: {1}")]
+    #[error("invalid TOML syntax: {1}")]
     InvalidToml(#[source] toml::de::Error, String),
+
+    #[cfg(feature = "yaml")]
+    /// Couldn't deserialize YAML into a particular type
+    #[error("couldn't deserialize YAML: {1}")]
+    DeserializeYaml(#[source] serde_yml::Error, String),
+    #[cfg(feature = "json")]
+    /// Couldn't deserialize JSON into a particular type
+    #[error("couldn't deserialize JSON: {1}")]
+    DeserializeJson(#[source] serde_json::Error, String),
+    #[cfg(feature = "toml")]
+    /// Couldn't deserialize TOML into a particular type
+    #[error("couldn't deserialize TOML: {1}")]
+    DeserializeToml(#[source] toml::de::Error, String),
 }
 
 pub fn split(content: &str) -> Result<SplitFrontmatter<'_>, Error> {
@@ -126,20 +139,32 @@ impl FrontmatterFormat {
     fn parse<T: serde::de::DeserializeOwned>(&self, matter_str: &str) -> Result<T, Error> {
         match self {
             #[cfg(feature = "json")]
-            Self::Json => serde_json::from_str(matter_str)
-                .map_err(|e| Error::InvalidJson(e, matter_str.to_string())),
+            Self::Json => {
+                let json: serde_json::Value = serde_json::from_str(matter_str)
+                    .map_err(|e| Error::InvalidJson(e, matter_str.to_string()))?;
+                serde_json::from_value(json)
+                    .map_err(|e| Error::DeserializeJson(e, matter_str.to_string()))
+            }
             #[cfg(not(feature = "json"))]
             Self::Json => Err(Error::DisabledFormat(Self::Json)),
 
             #[cfg(feature = "toml")]
-            Self::Toml => toml::from_str(matter_str)
-                .map_err(|e| Error::InvalidToml(e, matter_str.to_string())),
+            Self::Toml => {
+                let toml: toml::Value = toml::from_str(matter_str)
+                    .map_err(|e| Error::InvalidToml(e, matter_str.to_string()))?;
+                toml.try_into()
+                    .map_err(|e| Error::DeserializeToml(e, matter_str.to_string()))
+            }
             #[cfg(not(feature = "toml"))]
             Self::Toml => Err(Error::DisabledFormat(Self::Toml)),
 
             #[cfg(feature = "yaml")]
-            Self::Yaml => serde_yml::from_str(matter_str)
-                .map_err(|e| Error::InvalidYaml(e, matter_str.to_string())),
+            Self::Yaml => {
+                let yaml: serde_yml::Value = serde_yml::from_str(matter_str)
+                    .map_err(|e| Error::InvalidYaml(e, matter_str.to_string()))?;
+                serde_yml::from_value(yaml)
+                    .map_err(|e| Error::DeserializeYaml(e, matter_str.to_string()))
+            }
             #[cfg(not(feature = "yaml"))]
             Self::Yaml => Err(Error::DisabledFormat(Self::Yaml)),
         }
@@ -339,5 +364,123 @@ mod test_split {
         assert_eq!(result.frontmatter.unwrap(), "foo: bar\nbaz: 1\n");
         assert_eq!(result.format.unwrap(), FrontmatterFormat::Yaml);
         assert_eq!(result.body, "hello world");
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod test_parse {
+    use serde::Deserialize;
+
+    use super::*;
+
+    #[derive(Debug, PartialEq, Deserialize)]
+    struct Frontmatter {
+        foo: String,
+        baz: i32,
+    }
+
+    #[test]
+    fn empty_document() {
+        let input = "";
+        let result = parse::<Frontmatter>(input).unwrap();
+        assert!(result.frontmatter.is_none());
+        assert!(result.format.is_none());
+        assert_eq!(result.body, "");
+    }
+
+    #[test]
+    fn no_frontmatter() {
+        let input = "hello world";
+        let result = parse::<Frontmatter>(input).unwrap();
+        assert!(result.frontmatter.is_none());
+        assert!(result.format.is_none());
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn toml() {
+        let input = "+++\nfoo = \"bar\"\nbaz = 1\n+++\nhello world";
+        let result = parse::<Frontmatter>(input).unwrap();
+        assert_eq!(
+            result.frontmatter.unwrap(),
+            Frontmatter {
+                foo: "bar".to_string(),
+                baz: 1
+            }
+        );
+        assert_eq!(result.format.unwrap(), FrontmatterFormat::Toml);
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn yaml() {
+        let input = "---\nfoo: bar\nbaz: 1\n---\nhello world";
+        let result = parse::<Frontmatter>(input).unwrap();
+        assert_eq!(
+            result.frontmatter.unwrap(),
+            Frontmatter {
+                foo: "bar".to_string(),
+                baz: 1
+            }
+        );
+        assert_eq!(result.format.unwrap(), FrontmatterFormat::Yaml);
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn json() {
+        let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1\n}\nhello world";
+        let result = parse::<Frontmatter>(input).unwrap();
+        assert_eq!(
+            result.frontmatter.unwrap(),
+            Frontmatter {
+                foo: "bar".to_string(),
+                baz: 1
+            }
+        );
+        assert_eq!(result.format.unwrap(), FrontmatterFormat::Json);
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn invalid_toml_syntax() {
+        let input = "+++\nfoo = \"bar\"\nbaz = 1a\n+++\nhello world";
+        let result = parse::<Frontmatter>(input);
+        assert!(matches!(result.unwrap_err(), Error::InvalidToml(..)));
+    }
+
+    #[test]
+    fn invalid_yaml_syntax() {
+        let input = "---\nfoo: bar\nbaz: 1\n- item\n---\nhello world";
+        let result = parse::<Frontmatter>(input);
+        assert!(matches!(result.unwrap_err(), Error::InvalidYaml(..)));
+    }
+
+    #[test]
+    fn invalid_json_syntax() {
+        let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1,\n}\nhello world";
+        let result = parse::<Frontmatter>(input);
+        assert!(matches!(result.unwrap_err(), Error::InvalidJson(..)));
+    }
+
+    #[test]
+    fn deserialize_toml() {
+        let input = "+++\nfoo = \"bar\"\nbaz = \"not a number\"\n+++\nhello world";
+        let result = parse::<Frontmatter>(input);
+        assert!(matches!(result.unwrap_err(), Error::DeserializeToml(..)));
+    }
+
+    #[test]
+    fn deserialize_yaml() {
+        let input = "---\nfoo: bar\nbaz: [1, 2, 3]\n---\nhello world";
+        let result = parse::<Frontmatter>(input);
+        assert!(matches!(result.unwrap_err(), Error::DeserializeYaml(..)));
+    }
+
+    #[test]
+    fn deserialize_json() {
+        let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": \"not a number\"\n}\nhello world";
+        let result = parse::<Frontmatter>(input);
+        assert!(matches!(result.unwrap_err(), Error::DeserializeJson(..)));
     }
 }
