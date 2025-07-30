@@ -170,10 +170,10 @@ pub fn split(content: &str) -> Result<SplitFrontmatter<'_>, Error> {
 pub fn parse<T: serde::de::DeserializeOwned>(
     content: &str,
 ) -> Result<ParsedFrontmatter<'_, T>, Error> {
-    let split = split(content)?;
-    let (Some(format), Some(matter_str)) = (split.format, split.frontmatter) else {
+    let parts = split(content)?;
+    let (Some(format), Some(matter_str)) = (parts.format, parts.frontmatter) else {
         return Ok(ParsedFrontmatter {
-            body: split.body,
+            body: parts.body,
             format: None,
             frontmatter: None,
         });
@@ -181,7 +181,7 @@ pub fn parse<T: serde::de::DeserializeOwned>(
 
     let matter = format.parse(matter_str)?;
     Ok(ParsedFrontmatter {
-        body: split.body,
+        body: parts.body,
         format: Some(format),
         frontmatter: Some(matter),
     })
