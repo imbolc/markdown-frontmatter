@@ -37,44 +37,42 @@ pub struct ParsedFrontmatter<'a, T> {
 /// The crates error type
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Disabled frontmatter format
+    /// Frontmatter format is disabled.
     #[error("disabled format {0:?}, enable corresponding cargo feature")]
     DisabledFormat(FrontmatterFormat),
-    /// Absent closing delimiter
+    /// Closing delimiter is absent.
     #[error("absent closing {0:?} delimiter")]
     AbsentClosingDelimiter(FrontmatterFormat),
 
     #[cfg(feature = "yaml")]
-    /// Invalid YAML
+    /// Invalid YAML syntax.
     #[error("invalid YAML syntax")]
     InvalidYaml(#[source] serde_yml::Error),
     #[cfg(feature = "json")]
-    /// Invalid JSON
+    /// Invalid JSON syntax.
     #[error("invalid JSON syntax")]
     InvalidJson(#[source] serde_json::Error),
     #[cfg(feature = "toml")]
-    /// Invalid TOML
+    /// Invalid TOML syntax.
     #[error("invalid TOML syntax")]
     InvalidToml(#[source] toml::de::Error),
 
     #[cfg(feature = "yaml")]
-    /// Couldn't deserialize YAML into a particular type
+    /// Couldn't deserialize YAML into the target type.
     #[error("couldn't deserialize YAML")]
     DeserializeYaml(#[source] serde_yml::Error),
     #[cfg(feature = "json")]
-    /// Couldn't deserialize JSON into a particular type
+    /// Couldn't deserialize JSON into the target type.
     #[error("couldn't deserialize JSON")]
     DeserializeJson(#[source] serde_json::Error),
     #[cfg(feature = "toml")]
-    /// Couldn't deserialize TOML into a particular type
+    /// Couldn't deserialize TOML into the target type.
     #[error("couldn't deserialize TOML")]
     DeserializeToml(#[source] toml::de::Error),
 }
 
-/// Splits a document into frontmatter and body.
-///
-/// It detects the frontmatter format and returns the raw frontmatter string
-/// and the body of the document without the frontmatter.
+/// Splits a document into frontmatter and body, returning the raw frontmatter
+/// string and the body of the document.
 ///
 /// # Arguments
 ///
@@ -140,11 +138,8 @@ pub fn split(content: &str) -> Result<SplitFrontmatter<'_>, Error> {
 }
 
 #[cfg(feature = "serde")]
-/// Parses frontmatter from a markdown string.
-///
-/// It detects the frontmatter format, deserializes it into a given type,
-/// and returns the parsed frontmatter and the body of the document without the
-/// frontmatter.
+/// Parses frontmatter from a markdown string, deserializing it into a given
+/// type and returning the parsed frontmatter and the body of the document.
 ///
 /// # Arguments
 ///
@@ -195,7 +190,7 @@ pub fn parse<T: serde::de::DeserializeOwned>(
 impl FrontmatterFormat {
     const VARIANTS: [Self; 3] = [Self::Json, Self::Toml, Self::Yaml];
 
-    /// Detects frontmatter, returns `None` if the document doesn't have one
+    /// Detects the frontmatter format from the first line of a document.
     fn detect(first_line: &str) -> Option<Self> {
         Self::VARIANTS
             .into_iter()
