@@ -86,7 +86,7 @@ jobs:
           toolchain: stable
 
       - name: Test docs
-        run: cargo test --doc
+        run: cargo test --doc --all-features
 
   typos:
     runs-on: ubuntu-latest

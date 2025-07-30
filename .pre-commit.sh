@@ -39,5 +39,5 @@ cargo test --all-targets --no-default-features --features json
 cargo test --all-targets --no-default-features --features toml
 cargo test --all-targets --no-default-features --features yaml
 cargo test --all-targets --all-features
-cargo test --doc
+cargo test --doc --all-features
 cargo clippy --all-features --all-targets -- -D warnings

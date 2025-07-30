@@ -1,5 +1,5 @@
 [package]
-description = "Markdown frontmatter parser"
+description = "A type-safe markdown frontmatter parser"
 edition = "2024"
 license = "MIT"
 name = "markdown-frontmatter"
@@ -28,7 +28,7 @@ unsafe_code = "forbid"
 future_incompatible = { level = "deny", priority = -2 }
 keyword_idents = { level = "deny", priority = -2 }
 let_underscore = { level = "deny", priority = -2 }
-# missing_docs = "deny"
+missing_docs = "deny"
 nonstandard_style = { level = "deny", priority = -2 }
 refining_impl_trait = { level = "deny", priority = -2 }
 rust_2018_compatibility = { level = "deny", priority = -2 }
