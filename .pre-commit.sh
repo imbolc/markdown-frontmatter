@@ -34,7 +34,6 @@ cargo +nightly fmt -- --check
 cargo sort -c
 cargo rustdoc --all-features -- -D warnings
 cargo test --all-targets --no-default-features
-cargo test --all-targets --no-default-features --features serde
 cargo test --all-targets --no-default-features --features json
 cargo test --all-targets --no-default-features --features toml
 cargo test --all-targets --no-default-features --features yaml

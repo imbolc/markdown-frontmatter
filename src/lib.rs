@@ -137,7 +137,7 @@ pub fn split(content: &str) -> Result<SplitFrontmatter<'_>, Error> {
     Err(Error::AbsentClosingDelimiter(format))
 }
 
-#[cfg(feature = "serde")]
+#[cfg(any(feature = "json", feature = "toml", feature = "yaml"))]
 /// Parses frontmatter from a markdown string, deserializing it into a given
 /// type and returning the parsed frontmatter and the body of the document.
 ///
@@ -197,11 +197,7 @@ impl FrontmatterFormat {
             .find(|&variant| first_line == variant.delimiter().0)
     }
 
-    #[cfg(feature = "serde")]
-    #[cfg_attr(
-        not(any(feature = "json", feature = "toml", feature = "yaml")),
-        allow(unused_variables)
-    )]
+    #[cfg(any(feature = "json", feature = "toml", feature = "yaml"))]
     fn parse<T: serde::de::DeserializeOwned>(&self, matter_str: &str) -> Result<T, Error> {
         match self {
             #[cfg(feature = "json")]
@@ -429,7 +425,7 @@ mod test_split {
     }
 }
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(all(test, any(feature = "json", feature = "toml", feature = "yaml")))]
 mod test_parse {
     use serde::Deserialize;
 

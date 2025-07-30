@@ -9,9 +9,8 @@
 After you're done with a coding task:
 
 - Make `cargo check` pass
-- Make `cargo test` pass
-- Run `cargo +nightly fmt`
 - Make `./.pre-commit.sh` pass
+- Run `cargo +nightly fmt`
 
 ## Common rules
 
@@ -22,4 +21,3 @@ After you're done with a coding task:
 - In comments and any other texts, strive for clarity and conciseness
 - Don't add comments to the existing code if not explicitly asked
 - Always ask if you want to read / change anything outside of the project folder
-
