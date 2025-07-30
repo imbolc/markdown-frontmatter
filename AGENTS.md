@@ -1,7 +1,7 @@
 ## Project rules
 
 - Read `./README.md` to understand the project goal
-- Never read paths ignored in `./gitignore`
+- Never read paths ignored in `./.gitignore`
 - Never ask about committing changes
 
 ### Coding tasks
@@ -9,8 +9,8 @@
 After you're done with a coding task:
 
 - Make `cargo check` pass
-- Make `./.pre-commit.sh` pass
 - Run `cargo +nightly fmt`
+- Make `./.pre-commit.sh` pass
 
 ## Common rules
 
