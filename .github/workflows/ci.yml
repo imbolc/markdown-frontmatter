@@ -53,6 +53,15 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - --no-default-features
+          - --no-default-features --features serde
+          - --no-default-features --features json
+          - --no-default-features --features toml
+          - --no-default-features --features yaml
+          - --all-features
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,8 +71,19 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Test all targets
-        run: cargo test --all-targets
+      - name: Test
+        run: cargo test --all-targets ${{ matrix.features }}
+
+  test-doc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stable Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
 
       - name: Test docs
         run: cargo test --doc

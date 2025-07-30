@@ -397,90 +397,105 @@ mod test_parse {
         assert_eq!(result.body, "hello world");
     }
 
-    #[test]
-    fn toml() {
-        let input = "+++\nfoo = \"bar\"\nbaz = 1\n+++\nhello world";
-        let result = parse::<Frontmatter>(input).unwrap();
-        assert_eq!(
-            result.frontmatter.unwrap(),
-            Frontmatter {
-                foo: "bar".to_string(),
-                baz: 1
-            }
-        );
-        assert_eq!(result.format.unwrap(), FrontmatterFormat::Toml);
-        assert_eq!(result.body, "hello world");
+    #[cfg(feature = "json")]
+    mod json {
+        use super::*;
+
+        #[test]
+        fn valid() {
+            let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1\n}\nhello world";
+            let result = parse::<Frontmatter>(input).unwrap();
+            assert_eq!(
+                result.frontmatter.unwrap(),
+                Frontmatter {
+                    foo: "bar".to_string(),
+                    baz: 1
+                }
+            );
+            assert_eq!(result.format.unwrap(), FrontmatterFormat::Json);
+            assert_eq!(result.body, "hello world");
+        }
+
+        #[test]
+        fn invalid_syntax() {
+            let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1,\n}\nhello world";
+            let result = parse::<Frontmatter>(input);
+            assert!(matches!(result.unwrap_err(), Error::InvalidJson(..)));
+        }
+
+        #[test]
+        fn invalid_type() {
+            let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": \"not a number\"\n}\nhello world";
+            let result = parse::<Frontmatter>(input);
+            assert!(matches!(result.unwrap_err(), Error::DeserializeJson(..)));
+        }
     }
 
-    #[test]
-    fn yaml() {
-        let input = "---\nfoo: bar\nbaz: 1\n---\nhello world";
-        let result = parse::<Frontmatter>(input).unwrap();
-        assert_eq!(
-            result.frontmatter.unwrap(),
-            Frontmatter {
-                foo: "bar".to_string(),
-                baz: 1
-            }
-        );
-        assert_eq!(result.format.unwrap(), FrontmatterFormat::Yaml);
-        assert_eq!(result.body, "hello world");
+    #[cfg(feature = "toml")]
+    mod toml {
+        use super::*;
+
+        #[test]
+        fn valid() {
+            let input = "+++\nfoo = \"bar\"\nbaz = 1\n+++\nhello world";
+            let result = parse::<Frontmatter>(input).unwrap();
+            assert_eq!(
+                result.frontmatter.unwrap(),
+                Frontmatter {
+                    foo: "bar".to_string(),
+                    baz: 1
+                }
+            );
+            assert_eq!(result.format.unwrap(), FrontmatterFormat::Toml);
+            assert_eq!(result.body, "hello world");
+        }
+
+        #[test]
+        fn invalid_syntax() {
+            let input = "+++\nfoo = \"bar\"\nbaz = 1a\n+++\nhello world";
+            let result = parse::<Frontmatter>(input);
+            assert!(matches!(result.unwrap_err(), Error::InvalidToml(..)));
+        }
+
+        #[test]
+        fn invalid_type() {
+            let input = "+++\nfoo = \"bar\"\nbaz = \"not a number\"\n+++\nhello world";
+            let result = parse::<Frontmatter>(input);
+            assert!(matches!(result.unwrap_err(), Error::DeserializeToml(..)));
+        }
     }
 
-    #[test]
-    fn json() {
-        let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1\n}\nhello world";
-        let result = parse::<Frontmatter>(input).unwrap();
-        assert_eq!(
-            result.frontmatter.unwrap(),
-            Frontmatter {
-                foo: "bar".to_string(),
-                baz: 1
-            }
-        );
-        assert_eq!(result.format.unwrap(), FrontmatterFormat::Json);
-        assert_eq!(result.body, "hello world");
-    }
+    #[cfg(feature = "yaml")]
+    mod yaml {
+        use super::*;
 
-    #[test]
-    fn invalid_toml_syntax() {
-        let input = "+++\nfoo = \"bar\"\nbaz = 1a\n+++\nhello world";
-        let result = parse::<Frontmatter>(input);
-        assert!(matches!(result.unwrap_err(), Error::InvalidToml(..)));
-    }
+        #[test]
+        fn valid() {
+            let input = "---\nfoo: bar\nbaz: 1\n---\nhello world";
+            let result = parse::<Frontmatter>(input).unwrap();
+            assert_eq!(
+                result.frontmatter.unwrap(),
+                Frontmatter {
+                    foo: "bar".to_string(),
+                    baz: 1
+                }
+            );
+            assert_eq!(result.format.unwrap(), FrontmatterFormat::Yaml);
+            assert_eq!(result.body, "hello world");
+        }
 
-    #[test]
-    fn invalid_yaml_syntax() {
-        let input = "---\nfoo: bar\nbaz: 1\n- item\n---\nhello world";
-        let result = parse::<Frontmatter>(input);
-        assert!(matches!(result.unwrap_err(), Error::InvalidYaml(..)));
-    }
+        #[test]
+        fn invalid_syntax() {
+            let input = "---\nfoo: bar\nbaz: 1\n- item\n---\nhello world";
+            let result = parse::<Frontmatter>(input);
+            assert!(matches!(result.unwrap_err(), Error::InvalidYaml(..)));
+        }
 
-    #[test]
-    fn invalid_json_syntax() {
-        let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1,\n}\nhello world";
-        let result = parse::<Frontmatter>(input);
-        assert!(matches!(result.unwrap_err(), Error::InvalidJson(..)));
-    }
-
-    #[test]
-    fn deserialize_toml() {
-        let input = "+++\nfoo = \"bar\"\nbaz = \"not a number\"\n+++\nhello world";
-        let result = parse::<Frontmatter>(input);
-        assert!(matches!(result.unwrap_err(), Error::DeserializeToml(..)));
-    }
-
-    #[test]
-    fn deserialize_yaml() {
-        let input = "---\nfoo: bar\nbaz: [1, 2, 3]\n---\nhello world";
-        let result = parse::<Frontmatter>(input);
-        assert!(matches!(result.unwrap_err(), Error::DeserializeYaml(..)));
-    }
-
-    #[test]
-    fn deserialize_json() {
-        let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": \"not a number\"\n}\nhello world";
-        let result = parse::<Frontmatter>(input);
-        assert!(matches!(result.unwrap_err(), Error::DeserializeJson(..)));
+        #[test]
+        fn invalid_type() {
+            let input = "---\nfoo: bar\nbaz: [1, 2, 3]\n---\nhello world";
+            let result = parse::<Frontmatter>(input);
+            assert!(matches!(result.unwrap_err(), Error::DeserializeYaml(..)));
+        }
     }
 }
