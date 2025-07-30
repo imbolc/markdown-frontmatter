@@ -1,24 +1,36 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![doc = include_str!("../README.md")]
 
+/// The format of the frontmatter.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FrontmatterFormat {
+    /// JSON frontmatter, denoted by `{...}`.
     Json,
+    /// TOML frontmatter, denoted by `+++...+++`.
     Toml,
+    /// YAML frontmatter, denoted by `---...---`.
     Yaml,
 }
 
+/// The result of splitting a document into frontmatter and body.
 #[derive(Debug, Clone, Copy)]
 pub struct SplitFrontmatter<'a> {
+    /// The body of the document.
     pub body: &'a str,
+    /// The format of the frontmatter, if any.
     pub format: Option<FrontmatterFormat>,
+    /// The frontmatter, if any.
     pub frontmatter: Option<&'a str>,
 }
 
+/// The result of parsing a document's frontmatter.
 #[derive(Debug, Clone, Copy)]
 pub struct ParsedFrontmatter<'a, T> {
+    /// The body of the document.
     pub body: &'a str,
+    /// The format of the frontmatter, if any.
     pub format: Option<FrontmatterFormat>,
+    /// The parsed frontmatter, if any.
     pub frontmatter: Option<T>,
 }
 
@@ -59,6 +71,31 @@ pub enum Error {
     DeserializeToml(#[source] toml::de::Error, String),
 }
 
+/// Splits a document into frontmatter and body.
+///
+/// It detects the frontmatter format and returns the raw frontmatter string
+/// and the body of the document without the frontmatter.
+///
+/// # Arguments
+///
+/// * `content` - The content of the document to split.
+///
+/// # Examples
+///
+/// ```
+/// use markdown_frontmatter::{split, FrontmatterFormat};
+///
+/// let doc = r#"---
+/// title: Hello
+/// ---
+/// World
+/// "#;
+///
+/// let result = split(doc).unwrap();
+/// assert_eq!(result.format, Some(FrontmatterFormat::Yaml));
+/// assert_eq!(result.frontmatter, Some("title: Hello\n"));
+/// assert_eq!(result.body, "World\n");
+/// ```
 pub fn split(content: &str) -> Result<SplitFrontmatter<'_>, Error> {
     let content = content.trim_start();
     let mut lines = LineSpan::new(content);
@@ -103,8 +140,38 @@ pub fn split(content: &str) -> Result<SplitFrontmatter<'_>, Error> {
 }
 
 #[cfg(feature = "serde")]
-/// Parses frontmatter from markdown string.
-/// Returns the frontmatter and the rest of the content (page body)
+/// Parses frontmatter from a markdown string.
+///
+/// It detects the frontmatter format, deserializes it into a given type,
+/// and returns the parsed frontmatter and the body of the document without the
+/// frontmatter.
+///
+/// # Arguments
+///
+/// * `content` - The content of the document to parse.
+///
+/// # Examples
+///
+/// ```
+/// use markdown_frontmatter::{parse, FrontmatterFormat};
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// struct MyFrontmatter {
+///     title: String,
+/// }
+///
+/// let doc = r#"---
+/// title: Hello
+/// ---
+/// World
+/// "#;
+///
+/// let result = parse::<MyFrontmatter>(doc).unwrap();
+/// assert_eq!(result.format, Some(FrontmatterFormat::Yaml));
+/// assert_eq!(result.frontmatter.unwrap().title, "Hello");
+/// assert_eq!(result.body, "World\n");
+/// ```
 pub fn parse<T: serde::de::DeserializeOwned>(
     content: &str,
 ) -> Result<ParsedFrontmatter<'_, T>, Error> {
