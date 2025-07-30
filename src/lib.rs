@@ -1,7 +1,7 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![doc = include_str!("../README.md")]
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FrontmatterFormat {
     Json,
     Toml,
@@ -60,17 +60,31 @@ pub fn split(content: &str) -> Result<SplitFrontmatter<'_>, Error> {
         return Ok(SplitFrontmatter::empty(content));
     };
 
+    let matter_start = match format {
+        FrontmatterFormat::Json => span.start, // include opening curly bracket,
+        FrontmatterFormat::Toml | FrontmatterFormat::Yaml => span.next_start,
+    };
+
     let closing_delimiter = format.delimiter().1;
     for span in lines {
-        if span.line == closing_delimiter {
-            let matter = &content[..span.start];
-            let body = &content[span.next_start..];
-            return Ok(SplitFrontmatter {
-                body,
-                format: Some(format),
-                frontmatter: Some(matter),
-            });
+        if span.line != closing_delimiter {
+            continue;
         }
+        let (matter, body) = match format {
+            FrontmatterFormat::Json => (
+                &content[matter_start..span.next_start], // include closing curly bracket
+                &content[span.next_start..],
+            ),
+            FrontmatterFormat::Toml | FrontmatterFormat::Yaml => (
+                &content[matter_start..span.start], // exclude closing delimiter
+                &content[span.next_start..],
+            ),
+        };
+        return Ok(SplitFrontmatter {
+            body,
+            format: Some(format),
+            frontmatter: Some(matter),
+        });
     }
     Err(Error::AbsentClosingDelimiter(format))
 }
@@ -187,5 +201,143 @@ impl<'a> SplitFrontmatter<'a> {
             format: None,
             frontmatter: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod test_line_span {
+    use super::*;
+
+    #[test]
+    fn line_span() {
+        let input = "line 1\r\nline 2\nline 3";
+        let mut lines = LineSpan::new(input);
+
+        let line1 = lines.next().unwrap();
+        assert_eq!(line1.line, "line 1");
+        assert_eq!(line1.start, 0);
+        assert_eq!(line1.next_start, 8);
+
+        let line2 = lines.next().unwrap();
+        assert_eq!(line2.line, "line 2");
+        assert_eq!(line2.start, 8);
+        assert_eq!(line2.next_start, 15);
+
+        let line3 = lines.next().unwrap();
+        assert_eq!(line3.line, "line 3");
+        assert_eq!(line3.start, 15);
+        assert_eq!(line3.next_start, 21);
+
+        assert!(lines.next().is_none());
+    }
+}
+
+#[cfg(test)]
+mod test_split {
+    use super::*;
+
+    #[test]
+    fn empty_document() {
+        let input = "";
+        let result = split(input).unwrap();
+        assert!(result.frontmatter.is_none());
+        assert!(result.format.is_none());
+        assert_eq!(result.body, "");
+    }
+
+    #[test]
+    fn no_frontmatter() {
+        let input = "hello world";
+        let result = split(input).unwrap();
+        assert!(result.frontmatter.is_none());
+        assert!(result.format.is_none());
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn unclosed_json() {
+        let input = "{\n\t\"foo\": \"bar\"\n";
+        let result = split(input);
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::AbsentClosingDelimiter(FrontmatterFormat::Json)
+        ));
+    }
+
+    #[test]
+    fn unclosed_toml() {
+        let input = "+++\nfoo = \"bar\"";
+        let result = split(input);
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::AbsentClosingDelimiter(FrontmatterFormat::Toml)
+        ));
+    }
+
+    #[test]
+    fn unclosed_yaml() {
+        let input = "---\nfoo: bar";
+        let result = split(input);
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::AbsentClosingDelimiter(FrontmatterFormat::Yaml)
+        ));
+    }
+
+    #[test]
+    fn json_singleline() {
+        let input = "{\n\t\"foo\": \"bar\"\n}\nhello world";
+        let result = split(input).unwrap();
+        assert_eq!(result.frontmatter.unwrap(), "{\n\t\"foo\": \"bar\"\n}\n");
+        assert_eq!(result.format.unwrap(), FrontmatterFormat::Json);
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn json_multiline() {
+        let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1\n}\nhello world";
+        let result = split(input).unwrap();
+        assert_eq!(
+            result.frontmatter.unwrap(),
+            "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1\n}\n"
+        );
+        assert_eq!(result.format.unwrap(), FrontmatterFormat::Json);
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn toml_singleline() {
+        let input = "+++\nfoo = \"bar\"\n+++\nhello world";
+        let result = split(input).unwrap();
+        assert_eq!(result.frontmatter.unwrap(), "foo = \"bar\"\n");
+        assert_eq!(result.format.unwrap(), FrontmatterFormat::Toml);
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn toml_multiline() {
+        let input = "+++\nfoo = \"bar\"\nbaz = 1\n+++\nhello world";
+        let result = split(input).unwrap();
+        assert_eq!(result.frontmatter.unwrap(), "foo = \"bar\"\nbaz = 1\n");
+        assert_eq!(result.format.unwrap(), FrontmatterFormat::Toml);
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn yaml_singleline() {
+        let input = "---\nfoo: bar\n---\nhello world";
+        let result = split(input).unwrap();
+        assert_eq!(result.frontmatter.unwrap(), "foo: bar\n");
+        assert_eq!(result.format.unwrap(), FrontmatterFormat::Yaml);
+        assert_eq!(result.body, "hello world");
+    }
+
+    #[test]
+    fn yaml_multiline() {
+        let input = "---\nfoo: bar\nbaz: 1\n---\nhello world";
+        let result = split(input).unwrap();
+        assert_eq!(result.frontmatter.unwrap(), "foo: bar\nbaz: 1\n");
+        assert_eq!(result.format.unwrap(), FrontmatterFormat::Yaml);
+        assert_eq!(result.body, "hello world");
     }
 }
