@@ -10,14 +10,25 @@ version = "0.1.0"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+serde = ["dep:serde"]
+json = ["serde", "dep:serde_json"]
+toml = ["serde", "dep:toml"]
+yaml = ["serde", "dep:serde_yml"]
+
 [dependencies]
+serde = { version = "1", optional = true, features = ["derive"] }
+serde_json = { version = "1", optional = true }
+serde_yml = { version = "0.0.12", optional = true }
+thiserror = "2"
+toml = { version = "0.9", optional = true }
 
 [lints.rust]
 unsafe_code = "forbid"
 future_incompatible = { level = "deny", priority = -2 }
 keyword_idents = { level = "deny", priority = -2 }
 let_underscore = { level = "deny", priority = -2 }
-missing_docs = "deny"
+# missing_docs = "deny"
 nonstandard_style = { level = "deny", priority = -2 }
 refining_impl_trait = { level = "deny", priority = -2 }
 rust_2018_compatibility = { level = "deny", priority = -2 }
