@@ -203,6 +203,10 @@ impl FrontmatterFormat {
     }
 
     #[cfg(feature = "serde")]
+    #[cfg_attr(
+        not(any(feature = "json", feature = "toml", feature = "yaml")),
+        allow(unused_variables)
+    )]
     fn parse<T: serde::de::DeserializeOwned>(&self, matter_str: &str) -> Result<T, Error> {
         match self {
             #[cfg(feature = "json")]
