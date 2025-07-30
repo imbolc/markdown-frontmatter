@@ -46,29 +46,29 @@ pub enum Error {
 
     #[cfg(feature = "yaml")]
     /// Invalid YAML
-    #[error("invalid YAML syntax: {1}")]
-    InvalidYaml(#[source] serde_yml::Error, String),
+    #[error("invalid YAML syntax")]
+    InvalidYaml(#[source] serde_yml::Error),
     #[cfg(feature = "json")]
     /// Invalid JSON
-    #[error("invalid JSON syntax: {1}")]
-    InvalidJson(#[source] serde_json::Error, String),
+    #[error("invalid JSON syntax")]
+    InvalidJson(#[source] serde_json::Error),
     #[cfg(feature = "toml")]
     /// Invalid TOML
-    #[error("invalid TOML syntax: {1}")]
-    InvalidToml(#[source] toml::de::Error, String),
+    #[error("invalid TOML syntax")]
+    InvalidToml(#[source] toml::de::Error),
 
     #[cfg(feature = "yaml")]
     /// Couldn't deserialize YAML into a particular type
-    #[error("couldn't deserialize YAML: {1}")]
-    DeserializeYaml(#[source] serde_yml::Error, String),
+    #[error("couldn't deserialize YAML")]
+    DeserializeYaml(#[source] serde_yml::Error),
     #[cfg(feature = "json")]
     /// Couldn't deserialize JSON into a particular type
-    #[error("couldn't deserialize JSON: {1}")]
-    DeserializeJson(#[source] serde_json::Error, String),
+    #[error("couldn't deserialize JSON")]
+    DeserializeJson(#[source] serde_json::Error),
     #[cfg(feature = "toml")]
     /// Couldn't deserialize TOML into a particular type
-    #[error("couldn't deserialize TOML: {1}")]
-    DeserializeToml(#[source] toml::de::Error, String),
+    #[error("couldn't deserialize TOML")]
+    DeserializeToml(#[source] toml::de::Error),
 }
 
 /// Splits a document into frontmatter and body.
@@ -207,30 +207,26 @@ impl FrontmatterFormat {
         match self {
             #[cfg(feature = "json")]
             Self::Json => {
-                let json: serde_json::Value = serde_json::from_str(matter_str)
-                    .map_err(|e| Error::InvalidJson(e, matter_str.to_string()))?;
-                serde_json::from_value(json)
-                    .map_err(|e| Error::DeserializeJson(e, matter_str.to_string()))
+                let json: serde_json::Value =
+                    serde_json::from_str(matter_str).map_err(Error::InvalidJson)?;
+                serde_json::from_value(json).map_err(Error::DeserializeJson)
             }
             #[cfg(not(feature = "json"))]
             Self::Json => Err(Error::DisabledFormat(Self::Json)),
 
             #[cfg(feature = "toml")]
             Self::Toml => {
-                let toml: toml::Value = toml::from_str(matter_str)
-                    .map_err(|e| Error::InvalidToml(e, matter_str.to_string()))?;
-                toml.try_into()
-                    .map_err(|e| Error::DeserializeToml(e, matter_str.to_string()))
+                let toml: toml::Value = toml::from_str(matter_str).map_err(Error::InvalidToml)?;
+                toml.try_into().map_err(Error::DeserializeToml)
             }
             #[cfg(not(feature = "toml"))]
             Self::Toml => Err(Error::DisabledFormat(Self::Toml)),
 
             #[cfg(feature = "yaml")]
             Self::Yaml => {
-                let yaml: serde_yml::Value = serde_yml::from_str(matter_str)
-                    .map_err(|e| Error::InvalidYaml(e, matter_str.to_string()))?;
-                serde_yml::from_value(yaml)
-                    .map_err(|e| Error::DeserializeYaml(e, matter_str.to_string()))
+                let yaml: serde_yml::Value =
+                    serde_yml::from_str(matter_str).map_err(Error::InvalidYaml)?;
+                serde_yml::from_value(yaml).map_err(Error::DeserializeYaml)
             }
             #[cfg(not(feature = "yaml"))]
             Self::Yaml => Err(Error::DisabledFormat(Self::Yaml)),
