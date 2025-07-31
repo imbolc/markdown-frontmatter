@@ -14,6 +14,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 json = ["dep:serde", "dep:serde_json"]
 toml = ["dep:serde", "dep:toml"]
 yaml = ["dep:serde", "dep:serde_yml"]
+full = ["json", "toml", "yaml"]
+default = ["full"]
 
 [dependencies]
 serde = { version = "1", optional = true, features = ["derive"] }

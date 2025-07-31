@@ -45,47 +45,38 @@ cargo add markdown-frontmatter -F json
 
 ### Parsing Frontmatter
 
-To parse the frontmatter, enable the corresponding feature (`json`, `toml`, or
-`yaml`) and use the `parse` function:
-
 ```rust
-use markdown_frontmatter::{parse, FrontmatterFormat};
-
 #[derive(serde::Deserialize)]
-struct MyFrontmatter {
+struct Frontmatter {
     title: String,
 }
 
 let doc = r#"---
 title: Hello
 ---
-World
-"#;
+World"#;
 
-let result = parse::<MyFrontmatter>(doc).unwrap();
-assert_eq!(result.format, Some(FrontmatterFormat::Yaml));
-assert_eq!(result.frontmatter.unwrap().title, "Hello");
-assert_eq!(result.body, "World\n");
+let result = markdown_frontmatter::parse::<Frontmatter>(doc).unwrap();
+assert_eq!(result.frontmatter.title, "Hello");
+assert_eq!(result.body, "World");
 ```
 
-### Splitting Frontmatter
+#### Optional frontmatter
 
-If you only need to split the frontmatter from the body without deserializing
-it, you can use the `split` function:
+If a document does not contain a frontmatter, it is treated as if it has an
+empty one. This allows to make frontmatter fully optional by using only optional
+fields, e.g.
 
 ```rust
-use markdown_frontmatter::{split, FrontmatterFormat};
+#[derive(serde::Deserialize)]
+struct Frontmatter {
+    title: Option<String>,
+}
 
-let doc = r#"---
-title: Hello
----
-World
-"#;
-
-let result = split(doc).unwrap();
-assert_eq!(result.format, Some(FrontmatterFormat::Yaml));
-assert_eq!(result.frontmatter, Some("title: Hello\n"));
-assert_eq!(result.body, "World\n");
+let doc = "Hello";
+let result = markdown_frontmatter::parse::<Frontmatter>(doc).unwrap();
+assert!(result.frontmatter.title.is_none());
+assert_eq!(result.body, "Hello");
 ```
 
 ## Features

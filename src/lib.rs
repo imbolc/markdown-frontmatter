@@ -12,26 +12,15 @@ pub enum FrontmatterFormat {
     Yaml,
 }
 
-/// The result of splitting a document into frontmatter and body.
-#[derive(Debug, Clone, Copy)]
-pub struct SplitFrontmatter<'a> {
-    /// The body of the document.
-    pub body: &'a str,
-    /// The format of the frontmatter, if any.
-    pub format: Option<FrontmatterFormat>,
-    /// The frontmatter, if any.
-    pub frontmatter: Option<&'a str>,
-}
-
 /// The result of parsing a document's frontmatter.
 #[derive(Debug, Clone, Copy)]
 pub struct ParsedFrontmatter<'a, T> {
     /// The body of the document.
     pub body: &'a str,
-    /// The format of the frontmatter, if any.
-    pub format: Option<FrontmatterFormat>,
-    /// The parsed frontmatter, if any.
-    pub frontmatter: Option<T>,
+    /// The format of the frontmatter.
+    pub format: FrontmatterFormat,
+    /// The parsed frontmatter.
+    pub frontmatter: T,
 }
 
 /// The crates error type
@@ -71,72 +60,6 @@ pub enum Error {
     DeserializeToml(#[source] toml::de::Error),
 }
 
-/// Splits a document into frontmatter and body, returning the raw frontmatter
-/// string and the body of the document.
-///
-/// # Arguments
-///
-/// * `content` - The content of the document to split.
-///
-/// # Examples
-///
-/// ```
-/// use markdown_frontmatter::{split, FrontmatterFormat};
-///
-/// let doc = r#"---
-/// title: Hello
-/// ---
-/// World
-/// "#;
-///
-/// let result = split(doc).unwrap();
-/// assert_eq!(result.format, Some(FrontmatterFormat::Yaml));
-/// assert_eq!(result.frontmatter, Some("title: Hello\n"));
-/// assert_eq!(result.body, "World\n");
-/// ```
-pub fn split(content: &str) -> Result<SplitFrontmatter<'_>, Error> {
-    let content = content.trim_start();
-    let mut lines = LineSpan::new(content);
-
-    let Some(span) = lines.next() else {
-        // Empty document
-        return Ok(SplitFrontmatter::empty(content));
-    };
-
-    let Some(format) = FrontmatterFormat::detect(span.line) else {
-        // No frontmatter
-        return Ok(SplitFrontmatter::empty(content));
-    };
-
-    let matter_start = match format {
-        FrontmatterFormat::Json => span.start, // include opening curly bracket,
-        FrontmatterFormat::Toml | FrontmatterFormat::Yaml => span.next_start,
-    };
-
-    let closing_delimiter = format.delimiter().1;
-    for span in lines {
-        if span.line != closing_delimiter {
-            continue;
-        }
-        let (matter, body) = match format {
-            FrontmatterFormat::Json => (
-                &content[matter_start..span.next_start], // include closing curly bracket
-                &content[span.next_start..],
-            ),
-            FrontmatterFormat::Toml | FrontmatterFormat::Yaml => (
-                &content[matter_start..span.start], // exclude closing delimiter
-                &content[span.next_start..],
-            ),
-        };
-        return Ok(SplitFrontmatter {
-            body,
-            format: Some(format),
-            frontmatter: Some(matter),
-        });
-    }
-    Err(Error::AbsentClosingDelimiter(format))
-}
-
 #[cfg(any(feature = "json", feature = "toml", feature = "yaml"))]
 /// Parses frontmatter from a markdown string, deserializing it into a given
 /// type and returning the parsed frontmatter and the body of the document.
@@ -163,28 +86,83 @@ pub fn split(content: &str) -> Result<SplitFrontmatter<'_>, Error> {
 /// "#;
 ///
 /// let result = parse::<MyFrontmatter>(doc).unwrap();
-/// assert_eq!(result.format, Some(FrontmatterFormat::Yaml));
-/// assert_eq!(result.frontmatter.unwrap().title, "Hello");
+/// assert_eq!(result.format, FrontmatterFormat::Yaml);
+/// assert_eq!(result.frontmatter.title, "Hello");
 /// assert_eq!(result.body, "World\n");
 /// ```
 pub fn parse<T: serde::de::DeserializeOwned>(
     content: &str,
 ) -> Result<ParsedFrontmatter<'_, T>, Error> {
-    let parts = split(content)?;
-    let (Some(format), Some(matter_str)) = (parts.format, parts.frontmatter) else {
-        return Ok(ParsedFrontmatter {
-            body: parts.body,
-            format: None,
-            frontmatter: None,
-        });
+    let (maybe_frontmatter, body) = split(content)?;
+    let SplitFrontmatter(format, matter_str) = maybe_frontmatter.unwrap_or_default();
+    let frontmatter = format.parse(matter_str)?;
+    Ok(ParsedFrontmatter {
+        body,
+        format,
+        frontmatter,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SplitFrontmatter<'a>(FrontmatterFormat, &'a str);
+
+#[cfg(any(feature = "json", feature = "toml", feature = "yaml"))]
+impl Default for SplitFrontmatter<'_> {
+    fn default() -> Self {
+        #[cfg(feature = "json")]
+        {
+            Self(FrontmatterFormat::Json, "{}")
+        }
+        #[cfg(all(not(feature = "json"), feature = "toml"))]
+        {
+            Self(FrontmatterFormat::Toml, "")
+        }
+        #[cfg(all(not(any(feature = "json", feature = "toml")), feature = "yaml"))]
+        {
+            Self(FrontmatterFormat::Yaml, "{}")
+        }
+    }
+}
+
+/// Splits a document into frontmatter and body, returning the raw frontmatter
+/// string and the body of the document.
+fn split(content: &str) -> Result<(Option<SplitFrontmatter<'_>>, &str), Error> {
+    let content = content.trim_start();
+    let mut lines = LineSpan::new(content);
+
+    let Some(span) = lines.next() else {
+        // Empty document
+        return Ok((None, content));
     };
 
-    let matter = format.parse(matter_str)?;
-    Ok(ParsedFrontmatter {
-        body: parts.body,
-        format: Some(format),
-        frontmatter: Some(matter),
-    })
+    let Some(format) = FrontmatterFormat::detect(span.line) else {
+        // No frontmatter
+        return Ok((None, content));
+    };
+
+    let matter_start = match format {
+        FrontmatterFormat::Json => span.start, // include opening curly bracket,
+        FrontmatterFormat::Toml | FrontmatterFormat::Yaml => span.next_start,
+    };
+
+    let closing_delimiter = format.delimiter().1;
+    for span in lines {
+        if span.line != closing_delimiter {
+            continue;
+        }
+        let (matter, body) = match format {
+            FrontmatterFormat::Json => (
+                &content[matter_start..span.next_start], // include closing curly bracket
+                &content[span.next_start..],
+            ),
+            FrontmatterFormat::Toml | FrontmatterFormat::Yaml => (
+                &content[matter_start..span.start], // exclude closing delimiter
+                &content[span.next_start..],
+            ),
+        };
+        return Ok((Some(SplitFrontmatter(format, matter)), body));
+    }
+    Err(Error::AbsentClosingDelimiter(format))
 }
 
 impl FrontmatterFormat {
@@ -277,16 +255,6 @@ impl<'a> LineSpan<'a> {
     }
 }
 
-impl<'a> SplitFrontmatter<'a> {
-    fn empty(body: &'a str) -> SplitFrontmatter<'a> {
-        Self {
-            body,
-            format: None,
-            frontmatter: None,
-        }
-    }
-}
-
 #[cfg(test)]
 mod test_line_span {
     use super::*;
@@ -322,19 +290,17 @@ mod test_split {
     #[test]
     fn empty_document() {
         let input = "";
-        let result = split(input).unwrap();
-        assert!(result.frontmatter.is_none());
-        assert!(result.format.is_none());
-        assert_eq!(result.body, "");
+        let (frontmatter, body) = split(input).unwrap();
+        assert!(frontmatter.is_none());
+        assert_eq!(body, "");
     }
 
     #[test]
     fn no_frontmatter() {
         let input = "hello world";
-        let result = split(input).unwrap();
-        assert!(result.frontmatter.is_none());
-        assert!(result.format.is_none());
-        assert_eq!(result.body, "hello world");
+        let (frontmatter, body) = split(input).unwrap();
+        assert!(frontmatter.is_none());
+        assert_eq!(body, "hello world");
     }
 
     #[test]
@@ -370,58 +336,58 @@ mod test_split {
     #[test]
     fn json_singleline() {
         let input = "{\n\t\"foo\": \"bar\"\n}\nhello world";
-        let result = split(input).unwrap();
-        assert_eq!(result.frontmatter.unwrap(), "{\n\t\"foo\": \"bar\"\n}\n");
-        assert_eq!(result.format.unwrap(), FrontmatterFormat::Json);
-        assert_eq!(result.body, "hello world");
+        let (frontmatter, body) = split(input).unwrap();
+        assert_eq!(frontmatter.unwrap().1, "{\n\t\"foo\": \"bar\"\n}\n");
+        assert_eq!(frontmatter.unwrap().0, FrontmatterFormat::Json);
+        assert_eq!(body, "hello world");
     }
 
     #[test]
     fn json_multiline() {
         let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1\n}\nhello world";
-        let result = split(input).unwrap();
+        let (frontmatter, body) = split(input).unwrap();
         assert_eq!(
-            result.frontmatter.unwrap(),
+            frontmatter.unwrap().1,
             "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1\n}\n"
         );
-        assert_eq!(result.format.unwrap(), FrontmatterFormat::Json);
-        assert_eq!(result.body, "hello world");
+        assert_eq!(frontmatter.unwrap().0, FrontmatterFormat::Json);
+        assert_eq!(body, "hello world");
     }
 
     #[test]
     fn toml_singleline() {
         let input = "+++\nfoo = \"bar\"\n+++\nhello world";
-        let result = split(input).unwrap();
-        assert_eq!(result.frontmatter.unwrap(), "foo = \"bar\"\n");
-        assert_eq!(result.format.unwrap(), FrontmatterFormat::Toml);
-        assert_eq!(result.body, "hello world");
+        let (frontmatter, body) = split(input).unwrap();
+        assert_eq!(frontmatter.unwrap().1, "foo = \"bar\"\n");
+        assert_eq!(frontmatter.unwrap().0, FrontmatterFormat::Toml);
+        assert_eq!(body, "hello world");
     }
 
     #[test]
     fn toml_multiline() {
         let input = "+++\nfoo = \"bar\"\nbaz = 1\n+++\nhello world";
-        let result = split(input).unwrap();
-        assert_eq!(result.frontmatter.unwrap(), "foo = \"bar\"\nbaz = 1\n");
-        assert_eq!(result.format.unwrap(), FrontmatterFormat::Toml);
-        assert_eq!(result.body, "hello world");
+        let (frontmatter, body) = split(input).unwrap();
+        assert_eq!(frontmatter.unwrap().1, "foo = \"bar\"\nbaz = 1\n");
+        assert_eq!(frontmatter.unwrap().0, FrontmatterFormat::Toml);
+        assert_eq!(body, "hello world");
     }
 
     #[test]
     fn yaml_singleline() {
         let input = "---\nfoo: bar\n---\nhello world";
-        let result = split(input).unwrap();
-        assert_eq!(result.frontmatter.unwrap(), "foo: bar\n");
-        assert_eq!(result.format.unwrap(), FrontmatterFormat::Yaml);
-        assert_eq!(result.body, "hello world");
+        let (frontmatter, body) = split(input).unwrap();
+        assert_eq!(frontmatter.unwrap().1, "foo: bar\n");
+        assert_eq!(frontmatter.unwrap().0, FrontmatterFormat::Yaml);
+        assert_eq!(body, "hello world");
     }
 
     #[test]
     fn yaml_multiline() {
         let input = "---\nfoo: bar\nbaz: 1\n---\nhello world";
-        let result = split(input).unwrap();
-        assert_eq!(result.frontmatter.unwrap(), "foo: bar\nbaz: 1\n");
-        assert_eq!(result.format.unwrap(), FrontmatterFormat::Yaml);
-        assert_eq!(result.body, "hello world");
+        let (frontmatter, body) = split(input).unwrap();
+        assert_eq!(frontmatter.unwrap().1, "foo: bar\nbaz: 1\n");
+        assert_eq!(frontmatter.unwrap().0, FrontmatterFormat::Yaml);
+        assert_eq!(body, "hello world");
     }
 }
 
@@ -432,59 +398,115 @@ mod test_parse {
     use super::*;
 
     #[derive(Debug, PartialEq, Deserialize)]
-    struct Frontmatter {
-        foo: String,
-        baz: i32,
+    struct OptionalFrontmatter {
+        foo: Option<bool>,
     }
 
-    #[test]
-    fn empty_document() {
-        let input = "";
-        let result = parse::<Frontmatter>(input).unwrap();
-        assert!(result.frontmatter.is_none());
-        assert!(result.format.is_none());
-        assert_eq!(result.body, "");
+    #[derive(Debug, PartialEq, Deserialize)]
+    struct RequiredFrontmatter {
+        foo: bool,
     }
 
-    #[test]
-    fn no_frontmatter() {
-        let input = "hello world";
-        let result = parse::<Frontmatter>(input).unwrap();
-        assert!(result.frontmatter.is_none());
-        assert!(result.format.is_none());
-        assert_eq!(result.body, "hello world");
-    }
+    #[derive(Debug, PartialEq, Deserialize)]
+    struct EmptyFrontmatter {}
+
+    const EMPTY_DOCUMENT: &str = "";
+    const DOCUMENT_WITHOUT_FRONTMATTER: &str = "hello world";
+
+    const EMPTY_FRONTMATTER: EmptyFrontmatter = EmptyFrontmatter {};
+    const OPTIONAL_FRONTMATTER_SOME: OptionalFrontmatter = OptionalFrontmatter { foo: Some(true) };
+    const OPTIONAL_FRONTMATTER_NONE: OptionalFrontmatter = OptionalFrontmatter { foo: None };
+    const REQUIRED_FRONTMATTER: RequiredFrontmatter = RequiredFrontmatter { foo: true };
 
     #[cfg(feature = "json")]
     mod json {
         use super::*;
 
+        const VALID_DOCUMENT: &str = "{\n\t\"foo\": true\n}\nhello world";
+        const INVALID_SYNTAX: &str = "{\n1\n}";
+        const INVALID_TYPE: &str = "{\n\t\"foo\": 0\n}";
+
         #[test]
-        fn valid() {
-            let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1\n}\nhello world";
-            let result = parse::<Frontmatter>(input).unwrap();
-            assert_eq!(
-                result.frontmatter.unwrap(),
-                Frontmatter {
-                    foo: "bar".to_string(),
-                    baz: 1
-                }
-            );
-            assert_eq!(result.format.unwrap(), FrontmatterFormat::Json);
-            assert_eq!(result.body, "hello world");
+        fn empty_frontmatter_in_empty_document() {
+            let parsed = parse::<EmptyFrontmatter>(EMPTY_DOCUMENT).unwrap();
+            assert_eq!(parsed.frontmatter, EmptyFrontmatter {});
+            assert_eq!(parsed.format, FrontmatterFormat::Json);
+            assert_eq!(parsed.body, "");
         }
 
         #[test]
-        fn invalid_syntax() {
-            let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": 1,\n}\nhello world";
-            let result = parse::<Frontmatter>(input);
+        fn optional_frontmatter_in_empty_document() {
+            let parsed = parse::<OptionalFrontmatter>(EMPTY_DOCUMENT).unwrap();
+            assert_eq!(parsed.frontmatter.foo, None);
+            assert_eq!(parsed.format, FrontmatterFormat::Json);
+            assert_eq!(parsed.body, "");
+        }
+
+        #[test]
+        fn required_frontmatter_in_empty_document() {
+            let result = parse::<RequiredFrontmatter>(EMPTY_DOCUMENT);
+            assert!(matches!(result.unwrap_err(), Error::DeserializeJson(..)));
+        }
+
+        #[test]
+        fn empty_frontmatter_in_document_without_frontmatter() {
+            let parsed = parse::<EmptyFrontmatter>(DOCUMENT_WITHOUT_FRONTMATTER).unwrap();
+            assert_eq!(parsed.frontmatter, EMPTY_FRONTMATTER);
+            assert_eq!(parsed.format, FrontmatterFormat::Json);
+            assert_eq!(parsed.body, DOCUMENT_WITHOUT_FRONTMATTER);
+        }
+
+        #[test]
+        fn optional_frontmatter_in_document_without_frontmatter() {
+            let parsed = parse::<OptionalFrontmatter>(DOCUMENT_WITHOUT_FRONTMATTER).unwrap();
+            assert_eq!(parsed.frontmatter, OPTIONAL_FRONTMATTER_NONE);
+            assert_eq!(parsed.format, FrontmatterFormat::Json);
+            assert_eq!(parsed.body, DOCUMENT_WITHOUT_FRONTMATTER);
+        }
+
+        #[test]
+        fn required_frontmatter_in_document_without_frontmatter() {
+            let result = parse::<RequiredFrontmatter>(DOCUMENT_WITHOUT_FRONTMATTER);
+            assert!(matches!(result.unwrap_err(), Error::DeserializeJson(..)));
+        }
+
+        #[test]
+        fn optional_frontmatter_in_valid_document() {
+            let parsed = parse::<OptionalFrontmatter>(VALID_DOCUMENT).unwrap();
+            assert_eq!(parsed.frontmatter, OPTIONAL_FRONTMATTER_SOME);
+            assert_eq!(parsed.format, FrontmatterFormat::Json);
+            assert_eq!(parsed.body, "hello world");
+        }
+
+        #[test]
+        fn required_frontmatter_in_valid_document() {
+            let parsed = parse::<RequiredFrontmatter>(VALID_DOCUMENT).unwrap();
+            assert_eq!(parsed.frontmatter, REQUIRED_FRONTMATTER);
+            assert_eq!(parsed.format, FrontmatterFormat::Json);
+            assert_eq!(parsed.body, "hello world");
+        }
+
+        #[test]
+        fn optional_frontmatter_invalid_syntax() {
+            let result = parse::<OptionalFrontmatter>(INVALID_SYNTAX);
             assert!(matches!(result.unwrap_err(), Error::InvalidJson(..)));
         }
 
         #[test]
-        fn invalid_type() {
-            let input = "{\n\t\"foo\": \"bar\",\n\t\"baz\": \"not a number\"\n}\nhello world";
-            let result = parse::<Frontmatter>(input);
+        fn required_frontmatter_invalid_syntax() {
+            let result = parse::<RequiredFrontmatter>(INVALID_SYNTAX);
+            assert!(matches!(result.unwrap_err(), Error::InvalidJson(..)));
+        }
+
+        #[test]
+        fn optional_frontmatter_invalid_type() {
+            let result = parse::<OptionalFrontmatter>(INVALID_TYPE);
+            assert!(matches!(result.unwrap_err(), Error::DeserializeJson(..)));
+        }
+
+        #[test]
+        fn required_frontmatter_invalid_type() {
+            let result = parse::<RequiredFrontmatter>(INVALID_TYPE);
             assert!(matches!(result.unwrap_err(), Error::DeserializeJson(..)));
         }
     }
@@ -493,32 +515,96 @@ mod test_parse {
     mod toml {
         use super::*;
 
-        #[test]
-        fn valid() {
-            let input = "+++\nfoo = \"bar\"\nbaz = 1\n+++\nhello world";
-            let result = parse::<Frontmatter>(input).unwrap();
-            assert_eq!(
-                result.frontmatter.unwrap(),
-                Frontmatter {
-                    foo: "bar".to_string(),
-                    baz: 1
-                }
-            );
-            assert_eq!(result.format.unwrap(), FrontmatterFormat::Toml);
-            assert_eq!(result.body, "hello world");
+        const VALID_DOCUMENT: &str = "+++\nfoo = true\n+++\nhello world";
+        const INVALID_SYNTAX: &str = "+++\nfoobar\n+++\n";
+        const INVALID_TYPE: &str = "+++\nfoo = 123\n+++\n";
+
+        #[cfg(not(any(feature = "json", feature = "yaml")))]
+        mod only {
+            use super::*;
+
+            #[test]
+            fn empty_frontmatter_in_empty_document() {
+                let parsed = parse::<EmptyFrontmatter>(EMPTY_DOCUMENT).unwrap();
+                assert_eq!(parsed.frontmatter, EmptyFrontmatter {});
+                assert_eq!(parsed.format, FrontmatterFormat::Toml);
+                assert_eq!(parsed.body, "");
+            }
+
+            #[test]
+            fn optional_frontmatter_in_empty_document() {
+                let parsed = parse::<OptionalFrontmatter>(EMPTY_DOCUMENT).unwrap();
+                assert_eq!(parsed.frontmatter.foo, None);
+                assert_eq!(parsed.format, FrontmatterFormat::Toml);
+                assert_eq!(parsed.body, "");
+            }
+
+            #[test]
+            fn required_frontmatter_in_empty_document() {
+                let result = parse::<RequiredFrontmatter>(EMPTY_DOCUMENT);
+                assert!(matches!(result.unwrap_err(), Error::DeserializeToml(..)));
+            }
+
+            #[test]
+            fn empty_frontmatter_in_document_without_frontmatter() {
+                let parsed = parse::<EmptyFrontmatter>(DOCUMENT_WITHOUT_FRONTMATTER).unwrap();
+                assert_eq!(parsed.frontmatter, EMPTY_FRONTMATTER);
+                assert_eq!(parsed.format, FrontmatterFormat::Toml);
+                assert_eq!(parsed.body, DOCUMENT_WITHOUT_FRONTMATTER);
+            }
+
+            #[test]
+            fn optional_frontmatter_in_document_without_frontmatter() {
+                let parsed = parse::<OptionalFrontmatter>(DOCUMENT_WITHOUT_FRONTMATTER).unwrap();
+                assert_eq!(parsed.frontmatter, OPTIONAL_FRONTMATTER_NONE);
+                assert_eq!(parsed.format, FrontmatterFormat::Toml);
+                assert_eq!(parsed.body, DOCUMENT_WITHOUT_FRONTMATTER);
+            }
+
+            #[test]
+            fn required_frontmatter_in_document_without_frontmatter() {
+                let result = parse::<RequiredFrontmatter>(DOCUMENT_WITHOUT_FRONTMATTER);
+                assert!(matches!(result.unwrap_err(), Error::DeserializeToml(..)));
+            }
         }
 
         #[test]
-        fn invalid_syntax() {
-            let input = "+++\nfoo = \"bar\"\nbaz = 1a\n+++\nhello world";
-            let result = parse::<Frontmatter>(input);
+        fn optional_frontmatter_in_valid_document() {
+            let parsed = parse::<OptionalFrontmatter>(VALID_DOCUMENT).unwrap();
+            assert_eq!(parsed.frontmatter, OPTIONAL_FRONTMATTER_SOME);
+            assert_eq!(parsed.format, FrontmatterFormat::Toml);
+            assert_eq!(parsed.body, "hello world");
+        }
+
+        #[test]
+        fn required_frontmatter_in_valid_document() {
+            let parsed = parse::<RequiredFrontmatter>(VALID_DOCUMENT).unwrap();
+            assert_eq!(parsed.frontmatter, REQUIRED_FRONTMATTER);
+            assert_eq!(parsed.format, FrontmatterFormat::Toml);
+            assert_eq!(parsed.body, "hello world");
+        }
+
+        #[test]
+        fn optional_frontmatter_invalid_syntax() {
+            let result = parse::<OptionalFrontmatter>(INVALID_SYNTAX);
             assert!(matches!(result.unwrap_err(), Error::InvalidToml(..)));
         }
 
         #[test]
-        fn invalid_type() {
-            let input = "+++\nfoo = \"bar\"\nbaz = \"not a number\"\n+++\nhello world";
-            let result = parse::<Frontmatter>(input);
+        fn required_frontmatter_invalid_syntax() {
+            let result = parse::<RequiredFrontmatter>(INVALID_SYNTAX);
+            assert!(matches!(result.unwrap_err(), Error::InvalidToml(..)));
+        }
+
+        #[test]
+        fn optional_frontmatter_invalid_type() {
+            let result = parse::<OptionalFrontmatter>(INVALID_TYPE);
+            assert!(matches!(result.unwrap_err(), Error::DeserializeToml(..)));
+        }
+
+        #[test]
+        fn required_frontmatter_invalid_type() {
+            let result = parse::<RequiredFrontmatter>(INVALID_TYPE);
             assert!(matches!(result.unwrap_err(), Error::DeserializeToml(..)));
         }
     }
@@ -527,32 +613,96 @@ mod test_parse {
     mod yaml {
         use super::*;
 
-        #[test]
-        fn valid() {
-            let input = "---\nfoo: bar\nbaz: 1\n---\nhello world";
-            let result = parse::<Frontmatter>(input).unwrap();
-            assert_eq!(
-                result.frontmatter.unwrap(),
-                Frontmatter {
-                    foo: "bar".to_string(),
-                    baz: 1
-                }
-            );
-            assert_eq!(result.format.unwrap(), FrontmatterFormat::Yaml);
-            assert_eq!(result.body, "hello world");
+        const VALID_DOCUMENT: &str = "---\nfoo: true\n---\nhello world";
+        const INVALID_SYNTAX: &str = "---\n:\n---\n";
+        const INVALID_TYPE: &str = "---\nfoo: 123\n---\n";
+
+        #[cfg(not(any(feature = "json", feature = "toml")))]
+        mod only {
+            use super::*;
+
+            #[test]
+            fn empty_frontmatter_in_empty_document() {
+                let parsed = parse::<EmptyFrontmatter>(EMPTY_DOCUMENT).unwrap();
+                assert_eq!(parsed.frontmatter, EmptyFrontmatter {});
+                assert_eq!(parsed.format, FrontmatterFormat::Yaml);
+                assert_eq!(parsed.body, "");
+            }
+
+            #[test]
+            fn optional_frontmatter_in_empty_document() {
+                let parsed = parse::<OptionalFrontmatter>(EMPTY_DOCUMENT).unwrap();
+                assert_eq!(parsed.frontmatter.foo, None);
+                assert_eq!(parsed.format, FrontmatterFormat::Yaml);
+                assert_eq!(parsed.body, "");
+            }
+
+            #[test]
+            fn required_frontmatter_in_empty_document() {
+                let result = parse::<RequiredFrontmatter>(EMPTY_DOCUMENT);
+                assert!(matches!(result.unwrap_err(), Error::DeserializeYaml(..)));
+            }
+
+            #[test]
+            fn empty_frontmatter_in_document_without_frontmatter() {
+                let parsed = parse::<EmptyFrontmatter>(DOCUMENT_WITHOUT_FRONTMATTER).unwrap();
+                assert_eq!(parsed.frontmatter, EMPTY_FRONTMATTER);
+                assert_eq!(parsed.format, FrontmatterFormat::Yaml);
+                assert_eq!(parsed.body, DOCUMENT_WITHOUT_FRONTMATTER);
+            }
+
+            #[test]
+            fn optional_frontmatter_in_document_without_frontmatter() {
+                let parsed = parse::<OptionalFrontmatter>(DOCUMENT_WITHOUT_FRONTMATTER).unwrap();
+                assert_eq!(parsed.frontmatter, OPTIONAL_FRONTMATTER_NONE);
+                assert_eq!(parsed.format, FrontmatterFormat::Yaml);
+                assert_eq!(parsed.body, DOCUMENT_WITHOUT_FRONTMATTER);
+            }
+
+            #[test]
+            fn required_frontmatter_in_document_without_frontmatter() {
+                let result = parse::<RequiredFrontmatter>(DOCUMENT_WITHOUT_FRONTMATTER);
+                assert!(matches!(result.unwrap_err(), Error::DeserializeYaml(..)));
+            }
         }
 
         #[test]
-        fn invalid_syntax() {
-            let input = "---\nfoo: bar\nbaz: 1\n- item\n---\nhello world";
-            let result = parse::<Frontmatter>(input);
+        fn optional_frontmatter_in_valid_document() {
+            let parsed = parse::<OptionalFrontmatter>(VALID_DOCUMENT).unwrap();
+            assert_eq!(parsed.frontmatter, OPTIONAL_FRONTMATTER_SOME);
+            assert_eq!(parsed.format, FrontmatterFormat::Yaml);
+            assert_eq!(parsed.body, "hello world");
+        }
+
+        #[test]
+        fn required_frontmatter_in_valid_document() {
+            let parsed = parse::<RequiredFrontmatter>(VALID_DOCUMENT).unwrap();
+            assert_eq!(parsed.frontmatter, REQUIRED_FRONTMATTER);
+            assert_eq!(parsed.format, FrontmatterFormat::Yaml);
+            assert_eq!(parsed.body, "hello world");
+        }
+
+        #[test]
+        fn optional_frontmatter_invalid_syntax() {
+            let result = parse::<OptionalFrontmatter>(INVALID_SYNTAX);
             assert!(matches!(result.unwrap_err(), Error::InvalidYaml(..)));
         }
 
         #[test]
-        fn invalid_type() {
-            let input = "---\nfoo: bar\nbaz: [1, 2, 3]\n---\nhello world";
-            let result = parse::<Frontmatter>(input);
+        fn required_frontmatter_invalid_syntax() {
+            let result = parse::<RequiredFrontmatter>(INVALID_SYNTAX);
+            assert!(matches!(result.unwrap_err(), Error::InvalidYaml(..)));
+        }
+
+        #[test]
+        fn optional_frontmatter_invalid_type() {
+            let result = parse::<OptionalFrontmatter>(INVALID_TYPE);
+            assert!(matches!(result.unwrap_err(), Error::DeserializeYaml(..)));
+        }
+
+        #[test]
+        fn required_frontmatter_invalid_type() {
+            let result = parse::<RequiredFrontmatter>(INVALID_TYPE);
             assert!(matches!(result.unwrap_err(), Error::DeserializeYaml(..)));
         }
     }

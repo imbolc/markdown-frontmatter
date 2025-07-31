@@ -6,6 +6,10 @@
 
 ### Coding tasks
 
+- Task granularity: if during the task you notice any other issues with the
+  code, don't rush to fix them right away; instead, mention them after you're
+  done with the task
+
 After you're done with a coding task:
 
 - Make `cargo check` pass
