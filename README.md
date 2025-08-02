@@ -36,11 +36,10 @@ delimiters:
 
 ## Usage
 
-Add the crate to your dependencies with the required features. For example, to
-enable JSON parsing, run:
+Add the crate to your dependencies:
 
 ```sh
-cargo add markdown-frontmatter -F json
+cargo add markdown-frontmatter
 ```
 
 ### Parsing Frontmatter

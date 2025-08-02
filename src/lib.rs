@@ -1,6 +1,9 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![doc = include_str!("../README.md")]
 
+#[cfg(not(any(feature = "json", feature = "toml", feature = "yaml")))]
+compile_error!("at least one of the features `json`, `toml`, or `yaml` must be enabled");
+
 /// The format of the frontmatter.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FrontmatterFormat {
