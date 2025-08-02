@@ -39,7 +39,7 @@ pub enum Error {
     #[cfg(feature = "yaml")]
     /// Invalid YAML syntax.
     #[error("invalid YAML syntax")]
-    InvalidYaml(#[source] serde_yml::Error),
+    InvalidYaml(#[source] serde_yaml::Error),
     #[cfg(feature = "json")]
     /// Invalid JSON syntax.
     #[error("invalid JSON syntax")]
@@ -52,7 +52,7 @@ pub enum Error {
     #[cfg(feature = "yaml")]
     /// Couldn't deserialize YAML into the target type.
     #[error("couldn't deserialize YAML")]
-    DeserializeYaml(#[source] serde_yml::Error),
+    DeserializeYaml(#[source] serde_yaml::Error),
     #[cfg(feature = "json")]
     /// Couldn't deserialize JSON into the target type.
     #[error("couldn't deserialize JSON")]
@@ -200,9 +200,9 @@ impl FrontmatterFormat {
 
             #[cfg(feature = "yaml")]
             Self::Yaml => {
-                let yaml: serde_yml::Value =
-                    serde_yml::from_str(matter_str).map_err(Error::InvalidYaml)?;
-                serde_yml::from_value(yaml).map_err(Error::DeserializeYaml)
+                let yaml: serde_yaml::Value =
+                    serde_yaml::from_str(matter_str).map_err(Error::InvalidYaml)?;
+                serde_yaml::from_value(yaml).map_err(Error::DeserializeYaml)
             }
             #[cfg(not(feature = "yaml"))]
             Self::Yaml => Err(Error::DisabledFormat(Self::Yaml)),

@@ -4,7 +4,7 @@ edition = "2024"
 license = "MIT"
 name = "markdown-frontmatter"
 repository = "https://github.com/imbolc/markdown-frontmatter"
-version = "0.2.0"
+version = "0.3.0"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -13,14 +13,14 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 json = ["dep:serde", "dep:serde_json"]
 toml = ["dep:serde", "dep:toml"]
-yaml = ["dep:serde", "dep:serde_yml"]
+yaml = ["dep:serde", "dep:serde_yaml"]
 full = ["json", "toml", "yaml"]
 default = ["full"]
 
 [dependencies]
 serde = { version = "1", optional = true, features = ["derive"] }
 serde_json = { version = "1", optional = true }
-serde_yml = { version = "0.0.12", optional = true }
+serde_yaml = { version = "0.9.34", optional = true }
 thiserror = "2"
 toml = { version = "0.9", optional = true }
 
