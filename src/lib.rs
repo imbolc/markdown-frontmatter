@@ -26,7 +26,7 @@ pub struct ParsedFrontmatter<'a, T> {
     pub frontmatter: T,
 }
 
-/// The crates error type
+/// The crate's error type
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Frontmatter format is disabled.
