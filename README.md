@@ -55,9 +55,9 @@ title: Hello
 ---
 World"#;
 
-let result = markdown_frontmatter::parse::<Frontmatter>(doc).unwrap();
-assert_eq!(result.frontmatter.title, "Hello");
-assert_eq!(result.body, "World");
+let (frontmatter, body) = markdown_frontmatter::parse::<Frontmatter>(doc).unwrap();
+assert_eq!(frontmatter.title, "Hello");
+assert_eq!(body, "World");
 ```
 
 #### Optional frontmatter
@@ -73,9 +73,9 @@ struct Frontmatter {
 }
 
 let doc = "Hello";
-let result = markdown_frontmatter::parse::<Frontmatter>(doc).unwrap();
-assert!(result.frontmatter.title.is_none());
-assert_eq!(result.body, "Hello");
+let (frontmatter, body) = markdown_frontmatter::parse::<Frontmatter>(doc).unwrap();
+assert!(frontmatter.title.is_none());
+assert_eq!(body, "Hello");
 ```
 
 ## Features

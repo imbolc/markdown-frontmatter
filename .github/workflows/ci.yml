@@ -56,6 +56,7 @@ jobs:
     strategy:
       matrix:
         features:
+          - --no-default-features
           - --no-default-features --features json
           - --no-default-features --features toml
           - --no-default-features --features yaml
