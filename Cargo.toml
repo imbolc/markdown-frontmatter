@@ -4,7 +4,7 @@ edition = "2024"
 license = "MIT"
 name = "markdown-frontmatter"
 repository = "https://github.com/imbolc/markdown-frontmatter"
-version = "0.4.0"
+version = "0.5.0"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -22,7 +22,7 @@ serde = { version = "1", optional = true, features = ["derive"] }
 serde_json = { version = "1", optional = true }
 serde_yaml = { version = "0.9.34", optional = true }
 thiserror = "2"
-toml = { version = "0.9", optional = true }
+toml = { version = "1", optional = true }
 
 [lints.rust]
 unsafe_code = "forbid"
